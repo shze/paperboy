@@ -11,32 +11,54 @@ import logging
 import argparse
 import appdirs
 import json
+import urllib.request
 
 APPNAME = 'paperboy'
 CONFFILE = '{}.conf'.format(APPNAME)
 APPAUTHOR = 'heinze'
 EMAIL = 'sten.heinze@gmail.de'
 
-# https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
-def datetime_serializer(obj):
-    if isinstance(obj, (datetime, date)):
-        return obj.strftime('%Y-%m-%d')
-    raise TypeError('Type {} not JSON serializable'.format(type(obj)))
+# https://gist.github.com/setaou/ff98e82a9ce68f4c2b8637406b4620d1
+class JSONDecoder2(json.JSONDecoder):
+    date_regex = re.compile(r'(\d{1,4}[-/]\d{1,2}[-/]\d{1,2})')
 
-# https://stackoverflow.com/questions/8793448/how-to-convert-to-a-python-datetime-object-with-json-loads
-def datetime_parser(json_dict):
-    for (key, value) in json_dict.items():
-        try:
-            json_dict[key] = datetime.strptime(value, '%Y-%m-%d')
-        except (ValueError, TypeError):
-            pass
-    return json_dict
+    def __init__(self, *args, **kwargs):
+        logging.debug('JSONDecoder2.__init__')
+        json.JSONDecoder.__init__(self, object_hook = self.object_hook_func, *args, **kwargs)
+        self.parse_string = self.new_scanstring
+        # Use the python version as the C version does not use the new parse_string
+        self.scan_once = json.scanner.py_make_scanner(self) 
+
+    @classmethod
+    def new_scanstring(cls, s, end, strict = True):
+        (s, end) = json.decoder.scanstring(s, end, strict)
+        logging.debug('JSONDecoder2.new_scanstring: {}'.format(s))
+        if cls.date_regex.match(s):
+            logging.debug('JSONDecoder2.new_scanstring: date_regex matches')
+            return (date.fromisoformat(s), end)
+        else:
+            return (s, end)
+        
+    def object_hook_func(self, obj):
+        if '__type__' in obj and obj['__type__'] == 'Journal':
+            return Journal(obj['__data__'])
+        return obj
+
+def custom_encoder(obj):
+    if isinstance(obj, date):
+        return obj.isoformat()
+    if isinstance(obj, Journal):
+        return {'__type__': 'Journal', '__data__': obj.medline_format()}
+    raise TypeError('Type {} not JSON serializable'.format(type(obj)))
 
 class Config:
     def __init__(self):
         self.last_check_date = date.today() - timedelta(days = 4)
         self.email = EMAIL
-        #self.pubmed_journals_url = "https://ftp.ncbi.nih.gov/pubmed/J_Medline.txt"
+        self.pubmed_journals_url = "https://ftp.ncbi.nih.gov/pubmed/J_Medline.txt"
+        self.pubmed_journals = []
+        self.pubmed_journals_last_update = date.min
+        self.pubmed_journal_update_interval_days = 30
         self.journals = ['science']
         self.journals_last_article_id_lists = dict() # dict {journal_string : [article_id, ..], ..}
         
@@ -59,11 +81,10 @@ class Config:
         
         try:
             with open(cfg_file, 'r') as f:
-                self.set_members(json.load(f, object_hook = datetime_parser))
+                self.set_members(json.load(f, cls = JSONDecoder2))
                 logging.debug('Config.load_from_file: loading from {}'.format(cfg_file))
-        except:
+        except OSError:
             logging.debug('Config.load_from_file: could not read {}, using defaults'.format(cfg_file))
-            raise
         
     def save_to_file(self):
         folder = appdirs.user_config_dir(APPNAME)
@@ -73,7 +94,7 @@ class Config:
         logging.debug('Config.save_to_file: saving to {}'.format(cfg_file))
         
         with open(cfg_file, 'w') as f:
-            json.dump(self.get_member_dict(), f, default = datetime_serializer, indent=4, sort_keys=True)
+            json.dump(self.get_member_dict(), f, default = custom_encoder, indent = 4, sort_keys = True)
   
 class Article:
     def __init__(self, article_xml_tree):
@@ -112,10 +133,10 @@ class Article:
         if d == None:
             d = 1
         try:
-            self.journal_date = datetime.strptime('{}-{}-{}'.format(y, m, d), '%Y-%b-%d')
+            self.journal_date = date.strptime('{}-{}-{}'.format(y, m, d), '%Y-%b-%d')
         except:
             try:
-                self.journal_date = datetime.strptime('{}-{}-{}'.format(y, m, d), '%Y-%m-%d')
+                self.journal_date = date.strptime('{}-{}-{}'.format(y, m, d), '%Y-%m-%d')
             except:
                 self.missing_data.append('JournalDate')
         
@@ -212,6 +233,36 @@ class Article:
         else:
             self.missing_data.append(description)
             return None
+        
+class Journal:
+    def __init__(self, medline_journal_data):
+        journal_data_split_char = ':'
+        self.journal_data_dict = dict()
+        for line in medline_journal_data:
+            line_parts = line.split(journal_data_split_char, 1)
+            if len(line_parts) < 2:
+                logging.debug('Journal.__init__: Ignoring line \'{}\''.format(line))
+                continue
+
+            data = line_parts[1].strip()
+            if data:
+                self.journal_data_dict[line_parts[0].strip()] = data
+
+    def medline_format(self):
+        return ['{}: {}'.format(k, v) for k, v in self.journal_data_dict.items()]
+    
+    def __repr__(self):
+        return 'Journal({})'.format(self.journal_data_dict)
+
+    def __str__(self):
+        j_title_key = 'JournalTitle'
+        j_nlmid_key = 'NlmId'
+
+        # TODO make sure keys exist
+        j_title = self.journal_data_dict[j_title_key]
+        j_nlmid = self.journal_data_dict[j_nlmid_key]
+
+        return 'Journal: {}'.format(j_title) + ' ({}: '.format(j_nlmid_key) + Fore.YELLOW + '{}'.format(j_nlmid) + Style.RESET_ALL + ')'
 
 class Paperboy:
     # constructor
@@ -221,6 +272,8 @@ class Paperboy:
         Entrez.email = self.cfg.email
         
     def entrez_esearch(self, *args, **kwargs):
+        logging.debug('Paperboy.entrez_esearch: {} {}'.format(args, kwargs))
+        
         try:
             handle = Entrez.esearch(*args, **kwargs)
             record = Entrez.read(handle)
@@ -231,6 +284,8 @@ class Paperboy:
             sys.exit()
         
     def entrez_efetch(self, *args, **kwargs):
+        logging.debug('Paperboy.entrez_efetch: {} {}'.format(args, kwargs))
+
         try:
             handle = Entrez.efetch(*args, **kwargs)
             record = handle.read()
@@ -339,6 +394,36 @@ class Paperboy:
     
     def list_journals(self):
         pass
+    
+    def update_journal_list(self):
+        logging.debug('Paperboy.update_journal_list: {}'.format(self.cfg.pubmed_journals_url))
+        journals = []
+        journal_divider_string = '--------------------------------------------------------'
+        with urllib.request.urlopen(self.cfg.pubmed_journals_url) as response:
+            content = response.read().decode('utf-8').splitlines()
+            
+            journal_content = []
+            for line in content:
+                if line.startswith(journal_divider_string[0:5]):
+                    if len(journal_content) > 0:
+                        journals.append(Journal(journal_content))
+                        journal_content = []
+                else:
+                    journal_content.append(line)
+
+        # save
+        if len(journals) > 0:
+            self.cfg.pubmed_journals = journals
+            self.cfg.pubmed_journals_last_update = date.today()
+            self.cfg.save_to_file()
+    
+    def list_all_journals(self):
+        if len(self.cfg.pubmed_journals) == 0 or self.cfg.pubmed_journals_last_update < date.today() - timedelta(days = self.cfg.pubmed_journal_update_interval_days):
+            self.update_journal_list()
+            
+        logging.info('Found {} journals.'.format(len(self.cfg.pubmed_journals)))
+        for j in self.cfg.pubmed_journals:
+            logging.info('{}'.format(j))
 
 def main():
     init() # for colorama
@@ -347,10 +432,14 @@ def main():
     cmd_up = 'update'
     cmd_up_show = 'update-show'
     cmd_show = 'show'
+    cmd_j_list_all = 'journal-list-all'
+    cmd_j_list_active = 'journal-list-active'
+    cmd_j_add = 'journal-add'
+    cmd_j_remove = 'journal-remove'
     parser = argparse.ArgumentParser()
     parser.add_argument('command',
         help = 'command to be executed (default: %(default)s)',
-        choices = [cmd_up, cmd_up_show, cmd_show], 
+        choices = [cmd_up, cmd_up_show, cmd_show, cmd_j_list_all], 
         nargs = '?',
         default = cmd_up_show
     )
@@ -372,6 +461,8 @@ def main():
     elif args.command == cmd_show:
         p.load_all_articles()
         p.show_articles(args.show_all)
+    elif args.command == cmd_j_list_all:
+        p.list_all_journals()
 
 if __name__ == '__main__':
     main()
