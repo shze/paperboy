@@ -145,10 +145,10 @@ class Article:
         if d == None:
             d = 1
         try:
-            self.journal_date = date.strptime('{}-{}-{}'.format(y, m, d), '%Y-%b-%d')
+            self.journal_date = datetime.strptime('{}-{}-{}'.format(y, m, d), '%Y-%b-%d').date()
         except:
             try:
-                self.journal_date = date.strptime('{}-{}-{}'.format(y, m, d), '%Y-%m-%d')
+                self.journal_date = datetime.strptime('{}-{}-{}'.format(y, m, d), '%Y-%m-%d').date()
             except:
                 self.missing_data.append('JournalDate')
         
@@ -238,6 +238,12 @@ class Article:
             return None
         
 class Journal:
+    j_title_key = 'JournalTitle'
+    j_medabbr_key = 'MedAbbr'
+    j_issn_print_key = 'ISSN (Print)'
+    j_issn_online_key = 'ISSN (Online)'
+    j_nlmid_key = 'NlmId'
+        
     def __init__(self, medline_journal_data):
         journal_data_split_char = ':'
         self.journal_data_dict = dict()
@@ -258,21 +264,15 @@ class Journal:
         return 'Journal({})'.format(self.journal_data_dict)
 
     def __str__(self):
-        j_title_key = 'JournalTitle'
-        j_medabbr_key = 'MedAbbr'
-        j_issn_print_key = 'ISSN (Print)'
-        j_issn_online_key = 'ISSN (Online)'
-        j_nlmid_key = 'NlmId'
-
-        title = self.journal_data_dict[j_title_key] if j_title_key in self.journal_data_dict else "<No Title>"
-        abbr_part = ' ({})'.format(self.journal_data_dict[j_medabbr_key]) if j_medabbr_key in self.journal_data_dict else ""
-        nlmid_part = ' ({}: '.format(j_nlmid_key) \
-            + Fore.YELLOW + '{}'.format(self.journal_data_dict[j_nlmid_key]) + Style.RESET_ALL + ')' \
-            if j_nlmid_key in self.journal_data_dict else ""
+        title = self.journal_data_dict[Journal.j_title_key] if Journal.j_title_key in self.journal_data_dict else "<No Title>"
+        abbr_part = ' ({})'.format(self.journal_data_dict[Journal.j_medabbr_key]) if Journal.j_medabbr_key in self.journal_data_dict else ""
+        nlmid_part = ' ({}: '.format(Journal.j_nlmid_key) \
+            + Fore.YELLOW + '{}'.format(self.journal_data_dict[Journal.j_nlmid_key]) + Style.RESET_ALL + ')' \
+            if Journal.j_nlmid_key in self.journal_data_dict else ""
         
         issn_list = []
-        j_issn_print_key in self.journal_data_dict and issn_list.append(self.journal_data_dict[j_issn_print_key])
-        j_issn_online_key in self.journal_data_dict and issn_list.append(self.journal_data_dict[j_issn_online_key])
+        Journal.j_issn_print_key in self.journal_data_dict and issn_list.append(self.journal_data_dict[Journal.j_issn_print_key])
+        Journal.j_issn_online_key in self.journal_data_dict and issn_list.append(self.journal_data_dict[Journal.j_issn_online_key])
         issn_part = ""
         if len(issn_list) > 0:
             issn_part = ' (ISSN: ' + ', '.join(issn_list) + ')'
@@ -317,9 +317,9 @@ class Paperboy:
             logging.error('Paperboy.entrez_efetch: I/O Error fetching data from NCBI Entrez.')
             sys.exit()
         
-    # load and return all (up to 100000) article IDs for a given journal
-    def load_article_ids_from_journal(self, journal):
-        term = journal + '[ta] AND ' \
+    # load and return all (up to 100000) article IDs for a given journal_nlmid
+    def load_article_ids_from_journal(self, journal_nlmid):
+        term = journal_nlmid + '[ta] AND ' \
                 + self.cfg.last_check_date.strftime('%Y/%m/%d') + ":" \
                 + date.today().strftime('%Y/%m/%d') + '[dp]'
         record = self.entrez_esearch(db = 'pubmed', term = term)
@@ -341,6 +341,32 @@ class Paperboy:
             
         return article_ids
     
+    # load article IDs for all journals
+    def update_article_ids(self):
+        logging.info('Loading new articles since {}.'.format(self.cfg.last_check_date.strftime('%Y/%m/%d')))
+
+        active_journals = []
+        for pubmed_j in self.cfg.pubmed_journals:
+            for active_j in self.cfg.journals:
+                if active_j == pubmed_j.journal_data_dict[Journal.j_nlmid_key]:
+                    active_journals.append(pubmed_j)
+        
+        for j in active_journals:
+            j_nlmid = j.journal_data_dict[Journal.j_nlmid_key]
+            j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
+            # load article IDs
+            article_id_strings = self.load_article_ids_from_journal(j_nlmid)
+            logging.debug('Paperboy.update_article_ids: {}'.format(article_id_strings))
+            new_article_ids = [int(a_id) for a_id in article_id_strings if a_id not in self.cfg.journals_last_article_id_lists.get(j_nlmid, [])]
+            logging.debug('Paperboy.update_article_ids: {}'.format(new_article_ids))
+            logging.info('Found {} new articles from {}.'.format(len(new_article_ids), j_abbr))
+            
+            # update config
+            self.cfg.journals_last_article_id_lists[j_nlmid] = new_article_ids
+            
+        self.cfg.last_check_date = date.today()
+        self.cfg.save_to_file()
+        
     # load all articles
     def load_articles(self, article_ids):
         if len(article_ids) == 0:
@@ -359,24 +385,6 @@ class Paperboy:
             else:
                 logging.debug('Ignoring child node that is not a PubmedArticle')
 
-    # load article IDs for all journals
-    def update_article_ids(self):
-        logging.info('Loading new articles since {}.'.format(self.cfg.last_check_date.strftime('%Y/%m/%d')))
-        
-        for j in self.cfg.journals:
-            # load article IDs
-            article_id_strings = self.load_article_ids_from_journal(j)
-            logging.debug('Paperboy.update_article_ids: {}'.format(article_id_strings))
-            new_article_ids = [int(a_id) for a_id in article_id_strings if a_id not in self.cfg.journals_last_article_id_lists.get(j, [])]
-            logging.debug('Paperboy.update_article_ids: {}'.format(new_article_ids))
-            logging.info('Found {} new articles from {}.'.format(len(new_article_ids), j))
-            
-            # update config
-            self.cfg.journals_last_article_id_lists[j] = new_article_ids
-            
-        self.cfg.last_check_date = date.today()
-        self.cfg.save_to_file()
-        
     # load the article data for all journals
     def load_all_articles(self):
         self.articles = []
@@ -414,8 +422,17 @@ class Paperboy:
     def remove_journal(self):
         pass
     
-    def list_journals(self):
-        pass
+    def list_active_journals(self):
+        # iterate only once over all pubmed journals
+        active_journals = []
+        for pubmed_j in self.cfg.pubmed_journals:
+            for active_j in self.cfg.journals:
+                if active_j == pubmed_j.journal_data_dict[Journal.j_nlmid_key]:
+                    active_journals.append(pubmed_j)
+
+        logging.info('Found {} active journals.'.format(len(active_journals)))
+        for j in active_journals:
+            print(j)
     
     def update_journal_list(self):
         logging.debug('Paperboy.update_journal_list: {}'.format(self.cfg.pubmed_journals_url))
@@ -461,7 +478,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('command',
         help = 'command to be executed (default: %(default)s)',
-        choices = [cmd_up, cmd_up_show, cmd_show, cmd_j_list_all], 
+        choices = [cmd_up, cmd_up_show, cmd_show, cmd_j_list_all, cmd_j_list_active], 
         nargs = '?',
         default = cmd_up_show
     )
@@ -485,6 +502,8 @@ def main():
         p.show_articles(args.show_all)
     elif args.command == cmd_j_list_all:
         p.list_all_journals()
+    elif args.command == cmd_j_list_active:
+        p.list_active_journals()
 
 if __name__ == '__main__':
     main()
