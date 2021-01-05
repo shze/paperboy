@@ -17,6 +17,18 @@ APPNAME = 'paperboy'
 CONFFILE = '{}.conf'.format(APPNAME)
 APPAUTHOR = 'heinze'
 EMAIL = 'sten.heinze@gmail.de'
+MIN_TERMINAL_WIDTH = 110
+# use minimum width, b/c the title would be shortened to zero chars if we're trying to fit everything in 80 chars
+try:
+    MAX_LEN = max(MIN_TERMINAL_WIDTH, os.get_terminal_size()[0])
+except OSError:
+    MAX_LEN = sys.maxsize
+
+# https://stackoverflow.com/questions/2186919/getting-correct-string-length-in-python-for-strings-with-ansi-color-codes
+ESC = Literal('\x1b')
+integer = Word(nums)
+escapeSeq = Combine(ESC + '[' + Optional(delimitedList(integer, ';')) + oneOf(list(alphas)))
+nonAnsiString = lambda s: Suppress(escapeSeq).transformString(s)
 
 # https://gist.github.com/setaou/ff98e82a9ce68f4c2b8637406b4620d1
 class JSONDecoder2(json.JSONDecoder):
@@ -164,9 +176,6 @@ class Article:
     
     # user readable object information that fits on one terminal line, min 110 chars
     def __str__(self):
-        # use 110 as minimum width, b/c the title would be shortened to zero chars if we're trying to fit everything in 80 chars
-        max_len = max(110, os.get_terminal_size()[0])
-        
         # some article have no authors, e.g. news, but are still categorized as 'Journal Article'
         author_lastnames = ''
         if len(self.author_lastname_list) > 0:
@@ -190,20 +199,14 @@ class Article:
         
         result = title + author_lastnames + journal_doi_pmid
         
-        # https://stackoverflow.com/questions/2186919/getting-correct-string-length-in-python-for-strings-with-ansi-color-codes
-        ESC = Literal('\x1b')
-        integer = Word(nums)
-        escapeSeq = Combine(ESC + '[' + Optional(delimitedList(integer, ';')) + oneOf(list(alphas)))
-        nonAnsiString = lambda s: Suppress(escapeSeq).transformString(s)
-
-        if len(nonAnsiString(result)) > max_len and len(self.author_lastname_list) > 2:
-            logging.debug('Article.__str__: len_str={} > max_len={}, len_auth={} > 2'.format(len(nonAnsiString(result)), max_len, len(self.author_lastname_list)))
+        if len(nonAnsiString(result)) > MAX_LEN and len(self.author_lastname_list) > 2:
+            logging.debug('Article.__str__: len_str={} > MAX_LEN={}, len_auth={} > 2'.format(len(nonAnsiString(result)), MAX_LEN, len(self.author_lastname_list)))
             author_lastnames = ', '.join(self.author_lastname_list[0:1]) + ', ({} more). '.format(len(self.author_lastname_list) - 1)
             result = title + author_lastnames + journal_doi_pmid
                 
-        if len(nonAnsiString(result)) > max_len:
-            logging.debug('Article.__str__: len_str={} > max_len={}'.format(len(nonAnsiString(result)), max_len))
-            title_len = len(self.title) + max_len - len(nonAnsiString(result)) - 2
+        if len(nonAnsiString(result)) > MAX_LEN:
+            logging.debug('Article.__str__: len_str={} > MAX_LEN={}'.format(len(nonAnsiString(result)), MAX_LEN))
+            title_len = len(self.title) + MAX_LEN - len(nonAnsiString(result)) - 2
             title = Style.BRIGHT + '{}..'.format(self.title[0:title_len].strip()) + Style.RESET_ALL + ' '
             result = title + author_lastnames + journal_doi_pmid
         
@@ -256,13 +259,32 @@ class Journal:
 
     def __str__(self):
         j_title_key = 'JournalTitle'
+        j_medabbr_key = 'MedAbbr'
+        j_issn_print_key = 'ISSN (Print)'
+        j_issn_online_key = 'ISSN (Online)'
         j_nlmid_key = 'NlmId'
 
-        # TODO make sure keys exist
-        j_title = self.journal_data_dict[j_title_key]
-        j_nlmid = self.journal_data_dict[j_nlmid_key]
+        title = self.journal_data_dict[j_title_key] if j_title_key in self.journal_data_dict else "<No Title>"
+        abbr_part = ' ({})'.format(self.journal_data_dict[j_medabbr_key]) if j_medabbr_key in self.journal_data_dict else ""
+        nlmid_part = ' ({}: '.format(j_nlmid_key) \
+            + Fore.YELLOW + '{}'.format(self.journal_data_dict[j_nlmid_key]) + Style.RESET_ALL + ')' \
+            if j_nlmid_key in self.journal_data_dict else ""
+        
+        issn_list = []
+        j_issn_print_key in self.journal_data_dict and issn_list.append(self.journal_data_dict[j_issn_print_key])
+        j_issn_online_key in self.journal_data_dict and issn_list.append(self.journal_data_dict[j_issn_online_key])
+        issn_part = ""
+        if len(issn_list) > 0:
+            issn_part = ' (ISSN: ' + ', '.join(issn_list) + ')'
+            
+        result = 'Journal: ' + Style.BRIGHT + '{}'.format(title) + Style.RESET_ALL + abbr_part + nlmid_part + issn_part
 
-        return 'Journal: {}'.format(j_title) + ' ({}: '.format(j_nlmid_key) + Fore.YELLOW + '{}'.format(j_nlmid) + Style.RESET_ALL + ')'
+        if len(nonAnsiString(result)) > MAX_LEN:
+            logging.debug('Journal.__str__: len_str={} > MAX_LEN={}'.format(len(nonAnsiString(result)), MAX_LEN))
+            title_len = len(title) + MAX_LEN - len(nonAnsiString(result)) - 2
+            result = 'Journal: ' + Style.BRIGHT + '{}..'.format(title[0:title_len]) + Style.RESET_ALL + abbr_part + nlmid_part + issn_part
+
+        return result
 
 class Paperboy:
     # constructor
@@ -423,7 +445,7 @@ class Paperboy:
             
         logging.info('Found {} journals.'.format(len(self.cfg.pubmed_journals)))
         for j in self.cfg.pubmed_journals:
-            logging.info('{}'.format(j))
+            print('{}'.format(j))
 
 def main():
     init() # for colorama
