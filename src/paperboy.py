@@ -71,7 +71,7 @@ class Config:
         self.pubmed_journals = []
         self.pubmed_journals_last_update = date.min
         self.pubmed_journal_update_interval_days = 30
-        self.journals = ['science']
+        self.journals = []
         self.journals_last_article_id_lists = dict() # dict {journal_string : [article_id, ..], ..}
         
         self.load_from_file()
@@ -415,12 +415,50 @@ class Paperboy:
             
         for a in articles_to_show:
             print(a)
+            
+    def get_journal(self, journal_nlmid):
+        for pubmed_j in self.cfg.pubmed_journals:
+            if journal_nlmid == pubmed_j.journal_data_dict[Journal.j_nlmid_key]:
+                return pubmed_j
+        return None
         
-    def add_journal(self):
-        pass
+    def add_journal(self, journal_nlmid):
+        # get journal abbreviation for journal_nlmid
+        j = self.get_journal(journal_nlmid)
+        if j == None:
+            logging.info('No journal with NlmId {} found.'.format(journal_nlmid))
+            return
+        
+        j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
+
+        # check if journal_nlmid is already in journal list
+        if journal_nlmid in self.cfg.journals:
+            logging.info('{} (NlmId: {}) is already active.'.format(j_abbr, journal_nlmid))
+            return
+
+        # add journal_nlmid to journal list
+        self.cfg.journals.append(journal_nlmid)
+        self.cfg.save_to_file()
+        logging.info('{} (NlmId: {}) was marked active.'.format(j_abbr, journal_nlmid))
     
-    def remove_journal(self):
-        pass
+    def remove_journal(self, journal_nlmid):
+        # get journal data for journal_nlmid
+        j = self.get_journal(journal_nlmid)
+        if j == None:
+            logging.info('No journal with NlmId {} found.'.format(journal_nlmid))
+            return
+        
+        j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
+        
+        # check if journal_nlmid is in journal list
+        if journal_nlmid in self.cfg.journals:
+            logging.info('{} (NlmId: {}) is marked inactive.'.format(j_abbr, journal_nlmid))
+            self.cfg.journals.remove(journal_nlmid)
+            self.cfg.save_to_file()
+            return
+        
+        # already not on journal list, just note to user
+        logging.info('{} (NlmId: {}) was already inactive.'.format(j_abbr, journal_nlmid))
     
     def list_active_journals(self):
         # iterate only once over all pubmed journals
@@ -464,6 +502,32 @@ class Paperboy:
         for j in self.cfg.pubmed_journals:
             print('{}'.format(j))
 
+def func_up(args):
+    Paperboy().update_article_ids()
+
+def func_up_show(args):
+    p = Paperboy()
+    p.update_article_ids()
+    p.load_all_articles()
+    p.show_articles(args.show_all)
+    
+def func_show(args):
+    p = Paperboy()
+    p.load_all_articles()
+    p.show_articles(args.show_all)
+
+def func_j_list_all(args):
+    Paperboy().list_all_journals()
+
+def func_j_list_active(args):
+    Paperboy().list_active_journals()
+ 
+def func_j_add(args):
+    Paperboy().add_journal(args.nlmid[0])
+        
+def func_j_remove(args):
+    Paperboy().remove_journal(args.nlmid[0])
+
 def main():
     init() # for colorama
     
@@ -475,40 +539,35 @@ def main():
     cmd_j_list_active = 'journal-list-active'
     cmd_j_add = 'journal-add'
     cmd_j_remove = 'journal-remove'
+    cmd = [cmd_up, cmd_up_show, cmd_show, cmd_j_list_all, cmd_j_list_active, cmd_j_add, cmd_j_remove]
+    cmd_func = [func_up, func_up_show, func_show, func_j_list_all, func_j_list_active, func_j_add, func_j_remove]
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('command',
-        help = 'command to be executed (default: %(default)s)',
-        choices = [cmd_up, cmd_up_show, cmd_show, cmd_j_list_all, cmd_j_list_active], 
-        nargs = '?',
-        default = cmd_up_show
-    )
-    parser.add_argument('-s', '--show-all', action = 'store_true', help = 'show also letters and editorials')
-    parser.add_argument('-d', '--debug', action = 'store_true', help = 'show debug output')
+    parser.add_argument('-d', '--debug', action = 'store_true', help = 'show debug output') 
+    subparsers = parser.add_subparsers(help = 'command to be executed (default: {})'.format(cmd_up_show), dest = 'selected_cmd')
+    cmd_parser = {}
+    for i, c in enumerate(cmd):
+        cmd_parser[c] = subparsers.add_parser(c)
+        cmd_parser[c].set_defaults(func = cmd_func[i])
+
+    cmd_parser[cmd_up_show].add_argument('-s', '--show-all', action = 'store_true', help = 'show also letters and editorials')
+    cmd_parser[cmd_show].add_argument('-s', '--show-all', action = 'store_true', help = 'show also letters and editorials')
+    cmd_parser[cmd_j_add].add_argument('nlmid', nargs = 1, type = str)
+    cmd_parser[cmd_j_remove].add_argument('nlmid', nargs = 1, type = str)
+    
+    # if no command was passed, append default
+    if len(set(sys.argv) & set(cmd)) == 0:
+        sys.argv.append(cmd_up_show)
+
     args = parser.parse_args()
     
     # set up logging
     logging.basicConfig(format = '%(levelname)s: %(message)s', level = logging.DEBUG if args.debug == True else logging.INFO) 
-    
-    p = Paperboy()
-    
-    if args.command == cmd_up:
-        p.update_article_ids()
-    elif args.command == cmd_up_show:
-        p.update_article_ids()
-        p.load_all_articles()
-        p.show_articles(args.show_all)
-    elif args.command == cmd_show:
-        p.load_all_articles()
-        p.show_articles(args.show_all)
-    elif args.command == cmd_j_list_all:
-        p.list_all_journals()
-    elif args.command == cmd_j_list_active:
-        p.list_active_journals()
+    # call function for command
+    args.func(args)
 
 if __name__ == '__main__':
     main()
 
-# TODO EN locale for parsing pubmed date https://stackoverflow.com/questions/985505/locale-date-formatting-in-python
-# TODO cli: show pmid, add, remove, list
 # TODO rate limit
 # TODO format+document source according to py rules
