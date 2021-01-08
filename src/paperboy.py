@@ -454,6 +454,7 @@ class Paperboy:
         if journal_nlmid in self.cfg.journals:
             logging.info('{} (NlmId: {}) is marked inactive.'.format(j_abbr, journal_nlmid))
             self.cfg.journals.remove(journal_nlmid)
+            self.cfg.journals_last_article_id_lists.pop(journal_nlmid, None)
             self.cfg.save_to_file()
             return
         
