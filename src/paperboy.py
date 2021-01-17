@@ -27,8 +27,11 @@ except OSError:
 # https://stackoverflow.com/questions/2186919/getting-correct-string-length-in-python-for-strings-with-ansi-color-codes
 ESC = Literal('\x1b')
 integer = Word(nums)
-escapeSeq = Combine(ESC + '[' + Optional(delimitedList(integer, ';')) + oneOf(list(alphas)))
-nonAnsiString = lambda s: Suppress(escapeSeq).transformString(s)
+escapeSeq = Combine(
+    ESC + '[' + Optional(delimitedList(integer, ';')) + oneOf(list(alphas)))
+
+
+def nonAnsiString(s): return Suppress(escapeSeq).transformString(s)
 
 
 # https://gist.github.com/setaou/ff98e82a9ce68f4c2b8637406b4620d1
@@ -37,7 +40,8 @@ class JSONDecoder2(json.JSONDecoder):
 
     def __init__(self, *args, **kwargs):
         logging.debug('JSONDecoder2.__init__')
-        json.JSONDecoder.__init__(self, object_hook=self.object_hook_func, *args, **kwargs)
+        json.JSONDecoder.__init__(
+            self, object_hook=self.object_hook_func, *args, **kwargs)
         self.parse_string = self.new_scanstring
         # Use python version, the C version does not use the new parse_string
         self.scan_once = json.scanner.py_make_scanner(self)
@@ -81,12 +85,14 @@ class Config:
         self.load_from_file()
 
     def get_member_dict(self):
-        member_dict = {attr: getattr(self, attr) for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__")}
+        member_dict = {attr: getattr(self, attr) for attr in dir(self)
+                       if not callable(getattr(self, attr)) and not attr.startswith("__")}
         logging.debug('Config.get_member_dict: {}'.format(member_dict))
         return member_dict
 
     def set_members(self, member_dict):
-        members = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__")]
+        members = [attr for attr in dir(self)
+                   if not callable(getattr(self, attr)) and not attr.startswith("__")]
         for m in members:
             if m in member_dict:
                 setattr(self, m, member_dict[m])
@@ -98,9 +104,11 @@ class Config:
         try:
             with open(cfg_file, 'r') as f:
                 self.set_members(json.load(f, cls=JSONDecoder2))
-                logging.debug('Config.load_from_file: loading from {}'.format(cfg_file))
+                logging.debug(
+                    'Config.load_from_file: loading from {}'.format(cfg_file))
         except OSError:
-            logging.debug('Config.load_from_file: could not read {}, using defaults'.format(cfg_file))
+            logging.debug(
+                'Config.load_from_file: could not read {}, using defaults'.format(cfg_file))
 
     def save_to_file(self):
         folder = appdirs.user_config_dir(APPNAME)
@@ -110,7 +118,8 @@ class Config:
         logging.debug('Config.save_to_file: saving to {}'.format(cfg_file))
 
         with open(cfg_file, 'w') as f:
-            json.dump(self.get_member_dict(), f, default=custom_encoder, indent=4, sort_keys=True)
+            json.dump(self.get_member_dict(), f,
+                      default=custom_encoder, indent=4, sort_keys=True)
 
 
 class Article:
@@ -132,17 +141,27 @@ class Article:
         xpath_author_collective_name = './Author/CollectiveName'
 
         self.missing_data = []
-        self.doi = 'https://doi.org/{}'.format(self.extract_first_data(article_xml_tree, 'DOI', xpath_doi))
-        self.pmid = self.extract_first_data(article_xml_tree, 'PMID', xpath_pmid)
-        self.title = self.extract_first_data(article_xml_tree, 'Title', xpath_title)
-        self.pub_type_list = self.extract_all_data_list(article_xml_tree, 'PubType', xpath_pub_type)
-        self.journal_abbrev = self.extract_first_data(article_xml_tree, 'JournalAbbrev', xpath_journal_abbrev)
-        self.journal_vol = self.extract_first_data(article_xml_tree, 'JournalVol', xpath_journal_vol)
-        self.journal_issue = self.extract_first_data(article_xml_tree, 'JournalIssue', xpath_journal_issue)
+        self.doi = 'https://doi.org/{}'.format(
+            self.extract_first_data(article_xml_tree, 'DOI', xpath_doi))
+        self.pmid = self.extract_first_data(
+            article_xml_tree, 'PMID', xpath_pmid)
+        self.title = self.extract_first_data(
+            article_xml_tree, 'Title', xpath_title)
+        self.pub_type_list = self.extract_all_data_list(
+            article_xml_tree, 'PubType', xpath_pub_type)
+        self.journal_abbrev = self.extract_first_data(
+            article_xml_tree, 'JournalAbbrev', xpath_journal_abbrev)
+        self.journal_vol = self.extract_first_data(
+            article_xml_tree, 'JournalVol', xpath_journal_vol)
+        self.journal_issue = self.extract_first_data(
+            article_xml_tree, 'JournalIssue', xpath_journal_issue)
 
-        y = self.extract_first_data(article_xml_tree, 'JournalYear', xpath_journal_y)
-        m = self.extract_first_data(article_xml_tree, 'JournalMonth', xpath_journal_m)
-        d = self.extract_first_data(article_xml_tree, 'JournalDay', xpath_journal_d)
+        y = self.extract_first_data(
+            article_xml_tree, 'JournalYear', xpath_journal_y)
+        m = self.extract_first_data(
+            article_xml_tree, 'JournalMonth', xpath_journal_m)
+        d = self.extract_first_data(
+            article_xml_tree, 'JournalDay', xpath_journal_d)
         logging.debug('Article.__init__: y={} m={} d={}'.format(y, m, d))
         # some journals do not use day or month field,
         # set to 1 to avoid breaking the date parsing
@@ -151,10 +170,12 @@ class Article:
         if d is None:
             d = 1
         try:
-            self.journal_date = datetime.strptime('{}-{}-{}'.format(y, m, d), '%Y-%b-%d').date()
+            self.journal_date = datetime.strptime(
+                '{}-{}-{}'.format(y, m, d), '%Y-%b-%d').date()
         except ValueError:
             try:
-                self.journal_date = datetime.strptime('{}-{}-{}'.format(y, m, d), '%Y-%m-%d').date()
+                self.journal_date = datetime.strptime(
+                    '{}-{}-{}'.format(y, m, d), '%Y-%m-%d').date()
             except ValueError:
                 self.missing_data.append('JournalDate')
 
@@ -164,14 +185,18 @@ class Article:
             self.author_lastname_list = []
         else:
             authorlist_xml_tree = authorlist_xml_tree_list[0]
-            self.author_lastname_list = self.extract_all_data_list(authorlist_xml_tree, 'Lastname', xpath_author_lastname)
+            self.author_lastname_list = self.extract_all_data_list(
+                authorlist_xml_tree, 'Lastname', xpath_author_lastname)
             if self.author_lastname_list is None:
-                self.author_lastname_list = self.extract_all_data_list(authorlist_xml_tree, 'CollectiveName', xpath_author_collective_name)
-        logging.debug('Article.__init__: authors={}'.format(self.author_lastname_list))
+                self.author_lastname_list = self.extract_all_data_list(
+                    authorlist_xml_tree, 'CollectiveName', xpath_author_collective_name)
+        logging.debug('Article.__init__: authors={}'.format(
+            self.author_lastname_list))
 
         logging.debug('Article.__init__: {}'.format(self.__repr__()))
         if len(self.missing_data) > 0:
-            logging.debug('Missing data for PMID {}: {}'.format(self.pmid, ', '.join(self.missing_data)))
+            logging.debug('Missing data for PMID {}: {}'.format(
+                self.pmid, ', '.join(self.missing_data)))
 
     # object representation
     def __repr__(self):
@@ -188,7 +213,8 @@ class Article:
         # as 'Journal Article'
         author_lastnames = ''
         if len(self.author_lastname_list) > 0:
-            author_lastnames = '{}. '.format(', '.join(self.author_lastname_list))
+            author_lastnames = '{}. '.format(
+                ', '.join(self.author_lastname_list))
 
         # article can have many publication types, remove less informative ones
         pub_types_to_remove = ['Research Support, Non-U.S. Gov\'t',
@@ -196,7 +222,8 @@ class Article:
                                'Research Support, U.S. Gov\'t, P.H.S.',
                                'Research Support, N.I.H., Extramural',
                                'Research Support, N.I.H., Intramural']
-        pub_type_list_to_show = [p for p in self.pub_type_list if p not in pub_types_to_remove]
+        pub_type_list_to_show = [p for p in self.pub_type_list
+                                 if p not in pub_types_to_remove]
 
         journal_doi_pmid = '{} ('.format(self.journal_abbrev) \
             + Fore.YELLOW + '{}'.format(self.doi) + Style.RESET_ALL \
@@ -209,14 +236,20 @@ class Article:
         result = title + author_lastnames + journal_doi_pmid
 
         if len(nonAnsiString(result)) > MAX_LEN and len(self.author_lastname_list) > 2:
-            logging.debug('Article.__str__: len_str={} > MAX_LEN={}, len_auth={} > 2'.format(len(nonAnsiString(result)), MAX_LEN, len(self.author_lastname_list)))
-            author_lastnames = ', '.join(self.author_lastname_list[0:1]) + ', ({} more). '.format(len(self.author_lastname_list) - 1)
+            logging.debug('Article.__str__: len_str={} > MAX_LEN={}, len_auth={} > 2'.format(
+                len(nonAnsiString(result)), MAX_LEN, len(self.author_lastname_list)))
+            author_lastnames = ', '.join(self.author_lastname_list[0:1]) \
+                + ', ({} more). '.format(len(self.author_lastname_list) - 1)
             result = title + author_lastnames + journal_doi_pmid
 
         if len(nonAnsiString(result)) > MAX_LEN:
-            logging.debug('Article.__str__: len_str={} > MAX_LEN={}'.format(len(nonAnsiString(result)), MAX_LEN))
-            title_len = len(self.title) + MAX_LEN - len(nonAnsiString(result)) - 2
-            title = Style.BRIGHT + '{}..'.format(self.title[0:title_len].strip()) + Style.RESET_ALL + ' '
+            logging.debug('Article.__str__: len_str={} > MAX_LEN={}'.format(
+                len(nonAnsiString(result)), MAX_LEN))
+            title_len = len(self.title) + MAX_LEN - \
+                len(nonAnsiString(result)) - 2
+            title = Style.BRIGHT \
+                + '{}..'.format(self.title[0:title_len].strip()) \
+                + Style.RESET_ALL + ' '
             result = title + author_lastnames + journal_doi_pmid
 
         return result
@@ -224,7 +257,8 @@ class Article:
     def extract_first_data(self, xml_tree, description, xpath_spec):
         data_list = xml_tree.xpath(xpath_spec)
         if len(data_list) == 1:
-            logging.debug('Article.extract_first_data: {}'.format(etree.tostring(data_list[0])))
+            logging.debug('Article.extract_first_data: {}'.format(
+                etree.tostring(data_list[0])))
 
             # https://stackoverflow.com/questions/4624062/get-all-text-inside-a-tag-in-lxml
             data_string = ''.join(data_list[0].itertext())
@@ -237,10 +271,11 @@ class Article:
     def extract_all_data_list(self, xml_tree, description, xpath_spec):
         data_list = xml_tree.xpath(xpath_spec)
         if len(data_list) > 0:
-            logging.debug('Article.extract_all_data_list: {}'.format([etree.tostring(d) for d in data_list]))
-
+            logging.debug('Article.extract_all_data_list: {}'.format(
+                [etree.tostring(d) for d in data_list]))
             data_string_list = [''.join(d.itertext()) for d in data_list]
-            logging.debug('Article.extract_all_data_list: {}'.format(data_string_list))
+            logging.debug('Article.extract_all_data_list: {}'.format(
+                data_string_list))
             return [d.replace('\r', '').replace('\n', '') for d in data_string_list]
         else:
             self.missing_data.append(description)
@@ -260,7 +295,8 @@ class Journal:
         for line in medline_journal_data:
             line_parts = line.split(journal_data_split_char, 1)
             if len(line_parts) < 2:
-                logging.debug('Journal.__init__: Ignoring line \'{}\''.format(line))
+                logging.debug('Journal.__init__: Ignoring line \'{}\''.format(
+                    line))
                 continue
 
             data = line_parts[1].strip()
@@ -275,7 +311,9 @@ class Journal:
 
     def __str__(self):
         title = self.journal_data_dict[Journal.j_title_key] if Journal.j_title_key in self.journal_data_dict else "<No Title>"
-        abbr_part = ' ({})'.format(self.journal_data_dict[Journal.j_medabbr_key]) if Journal.j_medabbr_key in self.journal_data_dict else ""
+        abbr_part = ' ({})'.format(
+            self.journal_data_dict[Journal.j_medabbr_key]) \
+            if Journal.j_medabbr_key in self.journal_data_dict else ""
         nlmid_part = ' ({}: '.format(Journal.j_nlmid_key) \
             + Fore.YELLOW \
             + '{}'.format(self.journal_data_dict[Journal.j_nlmid_key]) \
@@ -283,18 +321,25 @@ class Journal:
             if Journal.j_nlmid_key in self.journal_data_dict else ""
 
         issn_list = []
-        Journal.j_issn_print_key in self.journal_data_dict and issn_list.append(self.journal_data_dict[Journal.j_issn_print_key])
-        Journal.j_issn_online_key in self.journal_data_dict and issn_list.append(self.journal_data_dict[Journal.j_issn_online_key])
+        if Journal.j_issn_print_key in self.journal_data_dict:
+            issn_list.append(self.journal_data_dict[Journal.j_issn_print_key])
+        if Journal.j_issn_online_key in self.journal_data_dict:
+            issn_list.append(self.journal_data_dict[Journal.j_issn_online_key])
         issn_part = ""
         if len(issn_list) > 0:
             issn_part = ' (ISSN: ' + ', '.join(issn_list) + ')'
 
-        result = 'Journal: ' + Style.BRIGHT + '{}'.format(title) + Style.RESET_ALL + abbr_part + nlmid_part + issn_part
+        result = 'Journal: ' + Style.BRIGHT + \
+            '{}'.format(title) + Style.RESET_ALL + \
+            abbr_part + nlmid_part + issn_part
 
         if len(nonAnsiString(result)) > MAX_LEN:
-            logging.debug('Journal.__str__: len_str={} > MAX_LEN={}'.format(len(nonAnsiString(result)), MAX_LEN))
+            logging.debug('Journal.__str__: len_str={} > MAX_LEN={}'.format(
+                len(nonAnsiString(result)), MAX_LEN))
             title_len = len(title) + MAX_LEN - len(nonAnsiString(result)) - 2
-            result = 'Journal: ' + Style.BRIGHT + '{}..'.format(title[0:title_len]) + Style.RESET_ALL + abbr_part + nlmid_part + issn_part
+            result = 'Journal: ' + Style.BRIGHT + \
+                '{}..'.format(title[0:title_len]) + Style.RESET_ALL + \
+                abbr_part + nlmid_part + issn_part
 
         return result
 
@@ -315,7 +360,8 @@ class Paperboy:
             handle.close()
             return record
         except (IOError, OSError):
-            logging.error('Paperboy.entrez_esearch: I/O Error searching data from NCBI Entrez.')
+            logging.error(
+                'Paperboy.entrez_esearch: I/O Error searching data from NCBI Entrez.')
             sys.exit()
 
     def entrez_efetch(self, *args, **kwargs):
@@ -327,16 +373,18 @@ class Paperboy:
             handle.close()
             return record
         except (IOError, OSError):
-            logging.error('Paperboy.entrez_efetch: I/O Error fetching data from NCBI Entrez.')
+            logging.error(
+                'Paperboy.entrez_efetch: I/O Error fetching data from NCBI Entrez.')
             sys.exit()
 
     # load and return all (up to 100000) article IDs for a given journal_nlmid
     def load_article_ids_from_journal(self, journal_nlmid):
         term = journal_nlmid + '[ta] AND ' \
-                + self.cfg.last_check_date.strftime('%Y/%m/%d') + ":" \
-                + date.today().strftime('%Y/%m/%d') + '[dp]'
+            + self.cfg.last_check_date.strftime('%Y/%m/%d') + ":" \
+            + date.today().strftime('%Y/%m/%d') + '[dp]'
         record = self.entrez_esearch(db='pubmed', term=term)
-        logging.debug('Paperboy.load_article_ids_from_journal: {}'.format(record))
+        logging.debug('Paperboy.load_article_ids_from_journal: {}'.format(
+            record))
 
         article_ids = record['IdList']
 
@@ -346,9 +394,12 @@ class Paperboy:
         retsize = len(article_ids)
 
         if count > retsize:
-            logging.debug('Paperboy.load_article_ids_from_journal: count={} > retsize={}'.format(count, retsize))
-            record = self.entrez_esearch(db='pubmed', term=term, retmax=count, retstart=retsize)
-            logging.debug('Paperboy.load_article_ids_from_journal: {}'.format(record))
+            logging.debug('Paperboy.load_article_ids_from_journal: count={} > retsize={}'.format(
+                count, retsize))
+            record = self.entrez_esearch(
+                db='pubmed', term=term, retmax=count, retstart=retsize)
+            logging.debug('Paperboy.load_article_ids_from_journal: {}'.format(
+                record))
 
             article_ids.extend(record['IdList'])
 
@@ -356,7 +407,8 @@ class Paperboy:
 
     # load article IDs for all journals
     def update_article_ids(self):
-        logging.info('Loading new articles since {}.'.format(self.cfg.last_check_date.strftime('%Y/%m/%d')))
+        logging.info('Loading new articles since {}.'.format(
+            self.cfg.last_check_date.strftime('%Y/%m/%d')))
 
         active_journals = []
         for pubmed_j in self.cfg.pubmed_journals:
@@ -369,10 +421,14 @@ class Paperboy:
             j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
             # load article IDs
             article_id_strings = self.load_article_ids_from_journal(j_nlmid)
-            logging.debug('Paperboy.update_article_ids: {}'.format(article_id_strings))
-            new_article_ids = [int(a_id) for a_id in article_id_strings if a_id not in self.cfg.journals_last_article_id_lists.get(j_nlmid, [])]
-            logging.debug('Paperboy.update_article_ids: {}'.format(new_article_ids))
-            logging.info('Found {} new articles from {}.'.format(len(new_article_ids), j_abbr))
+            logging.debug('Paperboy.update_article_ids: {}'.format(
+                article_id_strings))
+            new_article_ids = [int(a_id) for a_id in article_id_strings
+                               if a_id not in self.cfg.journals_last_article_id_lists.get(j_nlmid, [])]
+            logging.debug('Paperboy.update_article_ids: {}'.format(
+                new_article_ids))
+            logging.info('Found {} new articles from {}.'.format(
+                len(new_article_ids), j_abbr))
 
             # update config
             self.cfg.journals_last_article_id_lists[j_nlmid] = new_article_ids
@@ -392,11 +448,12 @@ class Paperboy:
         xml_tree = etree.fromstring(record, parser)
 
         for child in xml_tree:
-            logging.debug('Paperboy.load_articles: {}'.format(etree.tostring(child)))
+            logging.debug('Paperboy.load_articles: {}'.format(
+                etree.tostring(child)))
             if child.tag == 'PubmedArticle':
                 self.articles.append(Article(child))
             else:
-                logging.debug('Ignoring child node that is not a PubmedArticle')
+                logging.debug('Ignoring child node that is no PubmedArticle')
 
     # load the article data for all journals
     def load_all_articles(self):
@@ -424,9 +481,9 @@ class Paperboy:
             logging.info('Displaying {} articles{}.'.format(
                 len(articles_to_show),
                 '' if letters_and_editorials == 0 else
-                    ', excluding {} {}'.format(
-                        letters_and_editorials, ', '.join(pub_types_to_remove)
-                    )
+                ', excluding {} {}'.format(
+                    letters_and_editorials, ', '.join(pub_types_to_remove)
+                )
             ))
 
         for a in articles_to_show:
@@ -442,40 +499,46 @@ class Paperboy:
         # get journal abbreviation for journal_nlmid
         j = self.get_journal(journal_nlmid)
         if j is None:
-            logging.info('No journal with NlmId {} found.'.format(journal_nlmid))
+            logging.info('No journal with NlmId {} found.'.format(
+                journal_nlmid))
             return
 
         j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
 
         # check if journal_nlmid is already in journal list
         if journal_nlmid in self.cfg.journals:
-            logging.info('{} (NlmId: {}) is already active.'.format(j_abbr, journal_nlmid))
+            logging.info('{} (NlmId: {}) is already active.'.format(
+                j_abbr, journal_nlmid))
             return
 
         # add journal_nlmid to journal list
         self.cfg.journals.append(journal_nlmid)
         self.cfg.save_to_file()
-        logging.info('{} (NlmId: {}) was marked active.'.format(j_abbr, journal_nlmid))
+        logging.info('{} (NlmId: {}) was marked active.'.format(
+            j_abbr, journal_nlmid))
 
     def remove_journal(self, journal_nlmid):
         # get journal data for journal_nlmid
         j = self.get_journal(journal_nlmid)
         if j is None:
-            logging.info('No journal with NlmId {} found.'.format(journal_nlmid))
+            logging.info('No journal with NlmId {} found.'.format(
+                journal_nlmid))
             return
 
         j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
 
         # check if journal_nlmid is in journal list
         if journal_nlmid in self.cfg.journals:
-            logging.info('{} (NlmId: {}) is marked inactive.'.format(j_abbr, journal_nlmid))
+            logging.info('{} (NlmId: {}) is marked inactive.'.format(
+                j_abbr, journal_nlmid))
             self.cfg.journals.remove(journal_nlmid)
             self.cfg.journals_last_article_id_lists.pop(journal_nlmid, None)
             self.cfg.save_to_file()
             return
 
         # already not on journal list, just note to user
-        logging.info('{} (NlmId: {}) was already inactive.'.format(j_abbr, journal_nlmid))
+        logging.info('{} (NlmId: {}) was already inactive.'.format(
+            j_abbr, journal_nlmid))
 
     def list_active_journals(self):
         # iterate only once over all pubmed journals
@@ -490,7 +553,9 @@ class Paperboy:
             print(j)
 
     def update_journal_list(self):
-        logging.debug('Paperboy.update_journal_list: {}'.format(self.cfg.pubmed_journals_url))
+        logging.info('Updating journal information.')
+        logging.debug('Paperboy.update_journal_list: {}'.format(
+            self.cfg.pubmed_journals_url))
         journals = []
         journal_divider_string = '--------------------------------------------------------'
         with urllib.request.urlopen(self.cfg.pubmed_journals_url) as response:
@@ -515,7 +580,8 @@ class Paperboy:
         if len(self.cfg.pubmed_journals) == 0 or self.cfg.pubmed_journals_last_update < date.today() - timedelta(days=self.cfg.pubmed_journal_update_interval_days):
             self.update_journal_list()
 
-        logging.info('Found {} journals.'.format(len(self.cfg.pubmed_journals)))
+        logging.info('Found {} journals.'.format(
+            len(self.cfg.pubmed_journals)))
         for j in self.cfg.pubmed_journals:
             print('{}'.format(j))
 
@@ -543,19 +609,19 @@ def func_j_list_all(args):
 
 def func_j_list_active(args):
     Paperboy().list_active_journals()
- 
+
 
 def func_j_add(args):
     Paperboy().add_journal(args.nlmid[0])
-        
+
 
 def func_j_remove(args):
     Paperboy().remove_journal(args.nlmid[0])
 
 
 def main():
-    init() # for colorama
-    
+    init()  # for colorama
+
     # cli
     cmd_up = 'update'
     cmd_up_show = 'update-show'
@@ -564,19 +630,28 @@ def main():
     cmd_j_list_active = 'journal-list-active'
     cmd_j_add = 'journal-add'
     cmd_j_remove = 'journal-remove'
-    cmd = [cmd_up, cmd_up_show, cmd_show, cmd_j_list_all, cmd_j_list_active, cmd_j_add, cmd_j_remove]
-    cmd_func = [func_up, func_up_show, func_show, func_j_list_all, func_j_list_active, func_j_add, func_j_remove]
+    cmd = [cmd_up, cmd_up_show, cmd_show, cmd_j_list_all,
+           cmd_j_list_active, cmd_j_add, cmd_j_remove]
+    cmd_func = [func_up, func_up_show, func_show, func_j_list_all,
+                func_j_list_active, func_j_add, func_j_remove]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--debug', action='store_true', help='show debug output')
-    subparsers = parser.add_subparsers(help='command to be executed (default: {})'.format(cmd_up_show), dest='selected_cmd')
+    parser.add_argument('-d', '--debug', action='store_true',
+                        help='show debug output')
+    subparsers = parser.add_subparsers(
+        help='command to be executed (default: {})'.format(cmd_up_show),
+        dest='selected_cmd')
     cmd_parser = {}
     for i, c in enumerate(cmd):
         cmd_parser[c] = subparsers.add_parser(c)
         cmd_parser[c].set_defaults(func=cmd_func[i])
 
-    cmd_parser[cmd_up_show].add_argument('-s', '--show-all', action='store_true', help='show also letters and editorials')
-    cmd_parser[cmd_show].add_argument('-s', '--show-all', action='store_true', help='show also letters and editorials')
+    cmd_parser[cmd_up_show].add_argument(
+        '-s', '--show-all', action='store_true',
+        help='show also letters and editorials')
+    cmd_parser[cmd_show].add_argument(
+        '-s', '--show-all', action='store_true',
+        help='show also letters and editorials')
     cmd_parser[cmd_j_add].add_argument('nlmid', nargs=1, type=str)
     cmd_parser[cmd_j_remove].add_argument('nlmid', nargs=1, type=str)
 
@@ -587,7 +662,8 @@ def main():
     args = parser.parse_args()
 
     # set up logging
-    logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.DEBUG if args.debug is True else logging.INFO)
+    logging.basicConfig(format='%(levelname)s: %(message)s',
+                        level=logging.DEBUG if args.debug is True else logging.INFO)
     # call function for command
     args.func(args)
 
@@ -596,4 +672,4 @@ if __name__ == '__main__':
     main()
 
 # TODO rate limit
-# TODO format+document source according to py rules
+# TODO document source according to py rules
