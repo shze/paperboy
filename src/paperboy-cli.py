@@ -227,7 +227,7 @@ class Article:
 
         journal_doi_pmid = '{} ('.format(self.journal_abbrev) \
             + Fore.YELLOW + '{}'.format(self.doi) + Style.RESET_ALL \
-            + + ') (PMID ' \
+            + ') (PMID ' \
             + Fore.YELLOW + '{}'.format(self.pmid) + Style.RESET_ALL \
             + ') ({})'.format(', '.join(pub_type_list_to_show))
 
@@ -489,70 +489,10 @@ class Paperboy:
         for a in articles_to_show:
             print(a)
 
-    def get_journal(self, journal_nlmid):
-        for pubmed_j in self.cfg.pubmed_journals:
-            if journal_nlmid == pubmed_j.journal_data_dict[Journal.j_nlmid_key]:
-                return pubmed_j
-        return None
-
-    def add_journal(self, journal_nlmid):
-        # get journal abbreviation for journal_nlmid
-        j = self.get_journal(journal_nlmid)
-        if j is None:
-            logging.info('No journal with NlmId {} found.'.format(
-                journal_nlmid))
-            return
-
-        j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
-
-        # check if journal_nlmid is already in journal list
-        if journal_nlmid in self.cfg.journals:
-            logging.info('{} (NlmId: {}) is already active.'.format(
-                j_abbr, journal_nlmid))
-            return
-
-        # add journal_nlmid to journal list
-        self.cfg.journals.append(journal_nlmid)
-        self.cfg.save_to_file()
-        logging.info('{} (NlmId: {}) was marked active.'.format(
-            j_abbr, journal_nlmid))
-
-    def remove_journal(self, journal_nlmid):
-        # get journal data for journal_nlmid
-        j = self.get_journal(journal_nlmid)
-        if j is None:
-            logging.info('No journal with NlmId {} found.'.format(
-                journal_nlmid))
-            return
-
-        j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
-
-        # check if journal_nlmid is in journal list
-        if journal_nlmid in self.cfg.journals:
-            logging.info('{} (NlmId: {}) is marked inactive.'.format(
-                j_abbr, journal_nlmid))
-            self.cfg.journals.remove(journal_nlmid)
-            self.cfg.journals_last_article_id_lists.pop(journal_nlmid, None)
-            self.cfg.save_to_file()
-            return
-
-        # already not on journal list, just note to user
-        logging.info('{} (NlmId: {}) was already inactive.'.format(
-            j_abbr, journal_nlmid))
-
-    def list_active_journals(self):
-        # iterate only once over all pubmed journals
-        active_journals = []
-        for pubmed_j in self.cfg.pubmed_journals:
-            for active_j in self.cfg.journals:
-                if active_j == pubmed_j.journal_data_dict[Journal.j_nlmid_key]:
-                    active_journals.append(pubmed_j)
-
-        logging.info('Found {} active journals.'.format(len(active_journals)))
-        for j in active_journals:
-            print(j)
-
     def update_journal_list(self):
+        if len(self.cfg.pubmed_journals) > 0 and self.cfg.pubmed_journals_last_update >= date.today() - timedelta(days=self.cfg.pubmed_journal_update_interval_days):
+            return
+            
         logging.info('Updating journal information.')
         logging.debug('Paperboy.update_journal_list: {}'.format(
             self.cfg.pubmed_journals_url))
@@ -576,9 +516,77 @@ class Paperboy:
             self.cfg.pubmed_journals_last_update = date.today()
             self.cfg.save_to_file()
 
+    def get_journal(self, journal_nlmid):
+        for pubmed_j in self.cfg.pubmed_journals:
+            if journal_nlmid == pubmed_j.journal_data_dict[Journal.j_nlmid_key]:
+                return pubmed_j
+        return None
+
+    def add_journal(self, journal_nlmid):
+        self.update_journal_list()
+
+        # get journal abbreviation for journal_nlmid
+        j = self.get_journal(journal_nlmid)
+        if j is None:
+            logging.info('No journal with NlmId {} found.'.format(
+                journal_nlmid))
+            return
+
+        j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
+
+        # check if journal_nlmid is already in journal list
+        if journal_nlmid in self.cfg.journals:
+            logging.info('{} (NlmId: {}) is already active.'.format(
+                j_abbr, journal_nlmid))
+            return
+
+        # add journal_nlmid to journal list
+        self.cfg.journals.append(journal_nlmid)
+        self.cfg.save_to_file()
+        logging.info('{} (NlmId: {}) was marked active.'.format(
+            j_abbr, journal_nlmid))
+
+    def remove_journal(self, journal_nlmid):
+        self.update_journal_list()
+
+        # get journal data for journal_nlmid
+        j = self.get_journal(journal_nlmid)
+        if j is None:
+            logging.info('No journal with NlmId {} found.'.format(
+                journal_nlmid))
+            return
+
+        j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
+
+        # check if journal_nlmid is in journal list
+        if journal_nlmid in self.cfg.journals:
+            logging.info('{} (NlmId: {}) is marked inactive.'.format(
+                j_abbr, journal_nlmid))
+            self.cfg.journals.remove(journal_nlmid)
+            self.cfg.journals_last_article_id_lists.pop(journal_nlmid, None)
+            self.cfg.save_to_file()
+            return
+
+        # already not on journal list, just note to user
+        logging.info('{} (NlmId: {}) was already inactive.'.format(
+            j_abbr, journal_nlmid))
+
+    def list_active_journals(self):
+        self.update_journal_list()
+
+        # iterate only once over all pubmed journals
+        active_journals = []
+        for pubmed_j in self.cfg.pubmed_journals:
+            for active_j in self.cfg.journals:
+                if active_j == pubmed_j.journal_data_dict[Journal.j_nlmid_key]:
+                    active_journals.append(pubmed_j)
+
+        logging.info('Found {} active journals.'.format(len(active_journals)))
+        for j in active_journals:
+            print(j)
+
     def list_all_journals(self):
-        if len(self.cfg.pubmed_journals) == 0 or self.cfg.pubmed_journals_last_update < date.today() - timedelta(days=self.cfg.pubmed_journal_update_interval_days):
-            self.update_journal_list()
+        self.update_journal_list()
 
         logging.info('Found {} journals.'.format(
             len(self.cfg.pubmed_journals)))
