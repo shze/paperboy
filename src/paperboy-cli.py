@@ -420,12 +420,15 @@ class Paperboy:
             j_nlmid = j.journal_data_dict[Journal.j_nlmid_key]
             j_abbr = j.journal_data_dict[Journal.j_medabbr_key]
             # load article IDs
-            article_id_strings = self.load_article_ids_from_journal(j_nlmid)
-            logging.debug('Paperboy.update_article_ids: {}'.format(
-                article_id_strings))
-            new_article_ids = [int(a_id) for a_id in article_id_strings
-                               if a_id not in self.cfg.journals_last_article_id_lists.get(j_nlmid, [])]
-            logging.debug('Paperboy.update_article_ids: {}'.format(
+            article_ids = [int(a_id) for a_id in self.load_article_ids_from_journal(j_nlmid)]
+            logging.debug('Paperboy.update_article_ids: downloaded={}'.format(
+                article_ids))
+            old_article_ids = self.cfg.journals_last_article_id_lists.get(
+                j_nlmid, [])
+            logging.debug('Paperboy.update_article_ids: old={}'.format(
+                old_article_ids))
+            new_article_ids = [int(a_id) for a_id in article_ids if a_id not in old_article_ids]
+            logging.debug('Paperboy.update_article_ids: new={}'.format(
                 new_article_ids))
             logging.info('Found {} new articles from {}.'.format(
                 len(new_article_ids), j_abbr))
@@ -433,7 +436,9 @@ class Paperboy:
             # update config
             self.cfg.journals_last_article_id_lists[j_nlmid] = new_article_ids
 
-        self.cfg.last_check_date = date.today()
+        # since only the date is stored, time not included, save previous day
+        # and rely on saved IDs to not show articles twice
+        self.cfg.last_check_date = date.today() - timedelta(days=1)
         self.cfg.save_to_file()
 
     # load all articles
@@ -492,7 +497,7 @@ class Paperboy:
     def update_journal_list(self):
         if len(self.cfg.pubmed_journals) > 0 and self.cfg.pubmed_journals_last_update >= date.today() - timedelta(days=self.cfg.pubmed_journal_update_interval_days):
             return
-            
+
         logging.info('Updating journal information.')
         logging.debug('Paperboy.update_journal_list: {}'.format(
             self.cfg.pubmed_journals_url))
