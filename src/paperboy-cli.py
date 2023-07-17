@@ -12,6 +12,7 @@ import argparse
 import appdirs
 import json
 import urllib.request
+import re
 
 APPNAME = 'paperboy'
 CONFFILE = '{}.conf'.format(APPNAME)
