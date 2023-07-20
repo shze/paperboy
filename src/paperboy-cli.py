@@ -18,6 +18,9 @@ APPNAME = 'paperboy'
 CONFFILE = '{}.conf'.format(APPNAME)
 APPAUTHOR = 'heinze'
 EMAIL = 'sten.heinze@gmail.de'
+DATEFORMAT_INTERNAL = '%Y-%m-%d'
+DATEFORMAT_ENTREZ = '%Y/%m/%d'
+DATEFORMAT_USER = '%Y-%m-%d'
 # use min width so that output is not shortened so much to become unreadable
 MIN_TERMINAL_WIDTH = 110
 try:
@@ -205,7 +208,7 @@ class Article:
             .format(self.doi, self.pmid, self.title,
                     ', '.join(self.author_lastname_list),
                     self.journal_abbrev, self.journal_vol, self.journal_issue,
-                    self.journal_date.strftime('%Y-%m-%d'),
+                    self.journal_date.strftime(DATEFORMAT_INTERNAL),
                     ', '.join(self.pub_type_list))
 
     # user readable object information that fits on one terminal line (MAX_LEN)
@@ -379,10 +382,13 @@ class Paperboy:
             sys.exit()
 
     # load and return all (up to 100000) article IDs for a given journal_nlmid
+    # and date range (pubmed does not support time ranges, only date ranges)
+    # can include previously found articles from the same date range
     def load_article_ids_from_journal(self, journal_nlmid):
-        term = journal_nlmid + '[ta] AND ' \
-            + self.cfg.last_check_date.strftime('%Y/%m/%d') + ":" \
-            + date.today().strftime('%Y/%m/%d') + '[dp]'
+        # check until today (pubmed seems to use inclusive ranges)
+        term = journal_nlmid + '[jid] AND ' \
+            + self.cfg.last_check_date.strftime(DATEFORMAT_ENTREZ) + ":" \
+            + date.today().strftime(DATEFORMAT_ENTREZ) + '[dp]'
         record = self.entrez_esearch(db='pubmed', term=term)
         logging.debug('Paperboy.load_article_ids_from_journal: {}'.format(
             record))
@@ -409,7 +415,7 @@ class Paperboy:
     # load article IDs for all journals
     def update_article_ids(self):
         logging.info('Loading new articles since {}.'.format(
-            self.cfg.last_check_date.strftime('%Y/%m/%d')))
+            self.cfg.last_check_date.strftime(DATEFORMAT_USER)))
 
         active_journals = []
         for pubmed_j in self.cfg.pubmed_journals:
@@ -434,12 +440,12 @@ class Paperboy:
             logging.info('Found {} new articles from {}.'.format(
                 len(new_article_ids), j_abbr))
 
-            # update config
+            # update config, storing all new articles since the last update
             self.cfg.journals_last_article_id_lists[j_nlmid] = new_article_ids
 
-        # since only the date is stored, time not included, save previous day
-        # and rely on saved IDs to not show articles twice
-        self.cfg.last_check_date = date.today() - timedelta(days=1)
+        # use today since only the date is stored, time not included, rely on
+        # saved IDs to not show articles twice
+        self.cfg.last_check_date = date.today()
         self.cfg.save_to_file()
 
     # load all articles
@@ -617,6 +623,23 @@ def func_show(args):
     p.show_articles(args.show_all)
 
 
+def func_show_last_update(args):
+    logging.info('Last update was on {}.'.format(
+        Paperboy().cfg.last_check_date.strftime(DATEFORMAT_USER)))
+
+
+def func_set_last_update(args):
+    p = Paperboy()
+    if args.date[0].date() == p.cfg.last_check_date: 
+        logging.info('New date {} is same as last update date; no changes needed.'.format(args.date[0].strftime(DATEFORMAT_USER)))
+        return
+
+    logging.info('Setting last update date to {}.'.format(args.date[0].strftime(DATEFORMAT_USER)))
+    p.cfg.last_check_date = args.date[0].date()
+    p.cfg.old_article_ids = []
+    p.cfg.save_to_file();
+
+
 def func_j_list_all(args):
     Paperboy().list_all_journals()
 
@@ -633,21 +656,32 @@ def func_j_remove(args):
     Paperboy().remove_journal(args.nlmid[0])
 
 
+def valid_date(date_str):
+    try:
+        return datetime.strptime(date_str, DATEFORMAT_USER)
+    except ValueError:
+        msg = 'Invalid date: {}'.format(date_str)
+        raise argparse.ArgumentTypeError(msg)
+
+
 def main():
     init()  # for colorama
 
     # cli
-    cmd_up = 'update'
     cmd_up_show = 'update-show'
     cmd_show = 'show'
-    cmd_j_list_all = 'journal-list-all'
-    cmd_j_list_active = 'journal-list-active'
+    cmd_set_last_up = 'set-last-update'
     cmd_j_add = 'journal-add'
     cmd_j_remove = 'journal-remove'
-    cmd = [cmd_up, cmd_up_show, cmd_show, cmd_j_list_all,
-           cmd_j_list_active, cmd_j_add, cmd_j_remove]
-    cmd_func = [func_up, func_up_show, func_show, func_j_list_all,
-                func_j_list_active, func_j_add, func_j_remove]
+    cmd_dict = {'update': func_up, 
+                cmd_up_show: func_up_show,
+                cmd_show: func_show,
+                'show-last-update': func_show_last_update,
+                cmd_set_last_up: func_set_last_update,
+                'journal-list-all': func_j_list_all,
+                'journal-list-active': func_j_list_active,
+                cmd_j_add: func_j_add,
+                cmd_j_remove: func_j_remove}
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--debug', action='store_true',
@@ -656,9 +690,9 @@ def main():
         help='command to be executed (default: {})'.format(cmd_up_show),
         dest='selected_cmd')
     cmd_parser = {}
-    for i, c in enumerate(cmd):
-        cmd_parser[c] = subparsers.add_parser(c)
-        cmd_parser[c].set_defaults(func=cmd_func[i])
+    for cmd, func in cmd_dict.items():
+        cmd_parser[cmd] = subparsers.add_parser(cmd)
+        cmd_parser[cmd].set_defaults(func=func)
 
     cmd_parser[cmd_up_show].add_argument(
         '-s', '--show-all', action='store_true',
@@ -666,11 +700,12 @@ def main():
     cmd_parser[cmd_show].add_argument(
         '-s', '--show-all', action='store_true',
         help='show also letters and editorials')
+    cmd_parser[cmd_set_last_up].add_argument('date', nargs=1, type=valid_date)
     cmd_parser[cmd_j_add].add_argument('nlmid', nargs=1, type=str)
     cmd_parser[cmd_j_remove].add_argument('nlmid', nargs=1, type=str)
 
     # if no command was passed, append default
-    if len(set(sys.argv) & set(cmd)) == 0:
+    if len(set(sys.argv) & set(cmd_dict.keys())) == 0:
         sys.argv.append(cmd_up_show)
 
     args = parser.parse_args()
