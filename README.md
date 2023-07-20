@@ -64,13 +64,15 @@ conda activate paperboy
 
 The usage help is:
 ```
-paperboy-cli.py [-h] [-d] {update,update-show,show,journal-list-all,journal-list-active,journal-add,journal-remove}
+paperboy-cli.py [-h] [-d] {update,update-show,show,show-last-update,set-last-update,journal-list-all,journal-list-active,journal-add,journal-remove}
 ```
 
 The commands do the following:
-* `update`: Check for new published articles and download their IDs.
+* `update`: Check for new published articles and download their IDs since the last update.
 * `show`: Show details about all new articles, including title, authors, and DOI link.
 * `update-show`: Run `update` followed by `show`. This is the **default** command.
+* `show-last-update`: Print the date of the last update.
+* `set-last-update`: Set the date of the last update if you want to check older articles again.
 * `journal-list-all`: List all journals available in the Pubmed/Medline database. This is a fairly large number (~30k at the time of writing) and can take a bit. This list is downloaded the first time and stored locally, and only updated periodically after that.
 * `journal-list-active`: List all journals for which new articles are pulled.
 * `journal-add`: Add a journal to the list of active journals; requires the journal's NlmID (listed by `journal-list-all`).
