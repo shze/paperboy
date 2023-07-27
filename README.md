@@ -52,11 +52,11 @@ Once your set of journals is active, just repeat the last step.
 
 ## Requirements
 
-The following python packages are required: `biopython`, `lxml`, `colorama`, `pyparsing`, `appdirs`.
+The following python packages are required: `biopython`, `lxml`, `colorama`, `pyparsing`, `appdirs`; additionally `pyqt` for paperboy-gui.
 
 One way to set up an environment is by using conda.
 ```
-conda create -n paperboy python=3.8 biopython lxml colorama pyparsing appdirs
+conda create -n paperboy python=3.8 biopython lxml colorama pyparsing appdirs pyqt
 conda activate paperboy
 ```
 

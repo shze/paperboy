@@ -7,63 +7,77 @@ from notifypy import Notify
 import paperboy as pb
 import logging
 
-def f_update_articles():
-    global timer
-    timer.stop()
-    # TODO disable check for new articles menu
+
+class App:
+    def __init__(self):
+        # set up logging
+        debug = False # TODO needs to be in args
+        logging.basicConfig(format='%(levelname)s: %(message)s',
+                            level=logging.DEBUG if debug is True else logging.INFO)
+
+        self.app = QApplication([])
+        self.app.setQuitOnLastWindowClosed(False)
+
+        # TODO better icon, depending on DE and state
+        icon = QIcon.fromTheme("applications-science")
+        self.tray = QSystemTrayIcon()
+        self.tray.setIcon(icon)
+        self.tray.setVisible(True)
+
+        self.menu = QMenu()
+
+        self.m_show_articles = QAction("No new articles")
+        # 4 states: a) disabled, no articles. b) enabled, old articles. c) enabled, new articles. d) checking.
+        self.m_show_articles.setEnabled(False)
+        self.m_show_articles.setIcon(QIcon.fromTheme('system-software-install'))
+        self.menu.addAction(self.m_show_articles)
+
+        self.m_update_articles = QAction("Check for new articles")
+        self.m_update_articles.triggered.connect(self.f_update_articles)
+        self.m_update_articles.setIcon(QIcon.fromTheme('view-refresh'))
+        self.menu.addAction(self.m_update_articles)
+
+        self.m_quit = QAction("Quit")
+        self.m_quit.triggered.connect(self.app.quit)
+        self.m_quit.setIcon(QIcon.fromTheme('application-exit'))
+        self.menu.addAction(self.m_quit)
+
+        self.tray.setContextMenu(self.menu)
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.f_update_articles)
+        self.timer.start(1000)
+
+        self.p = pb.Paperboy()
+
+    def run(self):
+        self.app.exec_()
+
+    def f_update_running(self, is_running):
+        if is_running:
+            self.timer.stop()
+            self.m_update_articles.setEnabled(False)
+        else:
+            self.timer.start(600000) # 10min
+            self.m_update_articles.setEnabled(True)
+
+    def f_update_articles(self):
+        self.f_update_running(True)
     
-    p = pb.Paperboy()
-    p.update_article_ids()
+        self.p.update_article_ids()
 
-    notification = Notify(
-    default_notification_title="Function Message",
-    #default_application_name="Great Application",
-    default_notification_application_name="not a python app",
-    default_notification_icon="/usr/share/icons/hicolor/32x32/status/laptoptrusted.svg",
-    #default_notification_audio="path/to/sound.wav"
-    )
-    notification.message = "Even cooler message."
-    notification.send()
+        notification = Notify(
+            default_notification_title="Function Message",
+            #default_application_name="Great Application",
+            default_notification_application_name="not a python app",
+            default_notification_icon="/usr/share/icons/hicolor/32x32/status/laptoptrusted.svg",
+            #default_notification_audio="path/to/sound.wav"
+        )
+        notification.message = "Even cooler message."
+        notification.send()
 
-    # TODO enable menu again
-    timer.start(600000) # 10min
+        self.f_update_running(False)
+    
 
-# set up logging
-debug = False # TODO needs to be in args
-logging.basicConfig(format='%(levelname)s: %(message)s',
-                    level=logging.DEBUG if debug is True else logging.INFO)
-
-app = QApplication([])
-app.setQuitOnLastWindowClosed(False)
-
-# TODO better icon, depending on DE and state
-icon = QIcon.fromTheme("applications-science")
-tray = QSystemTrayIcon()
-tray.setIcon(icon)
-tray.setVisible(True)
-
-menu = QMenu()
-
-show_articles = QAction("No new articles")
-# 4 states: a) disabled, no articles. b) enabled, old articles. c) enabled, new articles. d) checking.
-show_articles.setEnabled(False)
-show_articles.setIcon(QIcon.fromTheme('system-software-install'))
-menu.addAction(show_articles)
-
-update_articles = QAction("Check for new articles")
-update_articles.triggered.connect(f_update_articles)
-update_articles.setIcon(QIcon.fromTheme('view-refresh'))
-menu.addAction(update_articles)
-
-quit = QAction("Quit")
-quit.triggered.connect(app.quit)
-quit.setIcon(QIcon.fromTheme('application-exit'))
-menu.addAction(quit)
-
-tray.setContextMenu(menu)
-
-timer = QTimer()
-timer.timeout.connect(f_update_articles)
-timer.start(1000)
-
-app.exec_()
+if __name__ == '__main__':
+    App().run()
