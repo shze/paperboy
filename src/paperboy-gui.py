@@ -7,10 +7,26 @@ from notifypy import Notify
 import paperboy as pb
 import logging
 import time
+import os
 
+
+MENU_SHOW_TEXT_NONE = "No new articles"
+MENU_SHOW_TEXT_NEW = "Show {} new articles"
+MENU_SHOW_TEXT_NEW_RECENT = "Show {} new and {} recent articles"
+MENU_SHOW_TEXT_RECENT = "Show {} recent articles"
 
 MENU_UPDATE_TEXT_IDLE = "Check for new articles"
 MENU_UPDATE_TEXT_UPDATING = "Checking for new articles.."
+
+
+# pyxdg does not have the xdg_state_home (yet); use this for now
+def get_xdg_state_home():
+    env_xdg_state_home = os.environ.get('XDG_STATE_HOME')
+    env_home = os.path.expanduser("~")
+    if env_xdg_state_home is None or not env_xdg_state_home.strip():
+        return os.path.join(env_home, ".local", "state")
+    else:
+        return env_xdg_state_home.strip()
 
 
 class UpdateWorker(QThread):
@@ -36,9 +52,27 @@ class UpdateWorker(QThread):
 class App:
     def __init__(self):
         # set up logging
+        log_path = get_xdg_state_home()
+        logfile = os.path.join(log_path, pb.PROJECTNAME + ".log")
+        # make sure dirs exist
+        os.makedirs(log_path, exist_ok=True)
+
+        # always log to terminal: only INFO level and short format
+        h_term = logging.StreamHandler()
+        h_term.setLevel(logging.INFO)
+        h_term.setFormatter(logging.Formatter(fmt='%(levelname)s: %(message)s'))
+
         debug = False # TODO needs to be in args
-        logging.basicConfig(format='%(levelname)s: %(message)s',
-                            level=logging.DEBUG if debug is True else logging.INFO)
+        if debug:
+            # log to file: DEBUG level and long format
+            h_file = logging.FileHandler(logfile)
+            h_file.setLevel(logging.DEBUG)
+            h_file.setFormatter(logging.Formatter(fmt='%(asctime)s %(levelname)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+
+            logging.basicConfig(level=logging.DEBUG, handlers=[h_term, h_file])
+            logging.info('Logging debug info to {}.'.format(logfile))
+        else:
+            logging.basicConfig(level=logging.INFO, handlers=[h_term])
 
         self.app = QApplication([])
         self.app.setQuitOnLastWindowClosed(False)
@@ -50,10 +84,10 @@ class App:
 
         self.menu = QMenu()
 
-        self.m_show_articles = QAction("No new articles")
-        # 4 states: a) disabled, no articles. b) enabled, old articles. c) enabled, new articles. d) checking.
+        self.m_show_articles = QAction(MENU_SHOW_TEXT_NONE)
+        # 3 states: a) disabled, no articles. b) enabled, old articles. c) enabled, new articles.
         self.m_show_articles.setEnabled(False)
-        self.m_show_articles.setIcon(QIcon.fromTheme('system-software-install'))
+        self.m_show_articles.setIcon(QIcon.fromTheme('text-plain'))
         self.menu.addAction(self.m_show_articles)
 
         self.m_update_articles = QAction(MENU_UPDATE_TEXT_IDLE)
