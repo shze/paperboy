@@ -51,6 +51,17 @@ class UpdateWorker(QThread):
 
 class App:
     def __init__(self):
+        self.init_logging()
+
+        self.app = QApplication([])
+        self.app.setQuitOnLastWindowClosed(False)
+        self.init_tray_icon()
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.f_update_articles)
+        self.timer.start(1000)
+
+    def init_logging(self):
         # set up logging
         log_path = get_xdg_state_home()
         logfile = os.path.join(log_path, pb.PROJECTNAME + ".log")
@@ -74,9 +85,7 @@ class App:
         else:
             logging.basicConfig(level=logging.INFO, handlers=[h_term])
 
-        self.app = QApplication([])
-        self.app.setQuitOnLastWindowClosed(False)
-
+    def init_tray_icon(self):
         icon = QIcon.fromTheme("applications-science")
         self.tray = QSystemTrayIcon()
         self.tray.setIcon(icon)
@@ -101,10 +110,6 @@ class App:
         self.menu.addAction(self.m_quit)
 
         self.tray.setContextMenu(self.menu)
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.f_update_articles)
-        self.timer.start(1000)
 
     def run(self):
         self.app.exec_()
