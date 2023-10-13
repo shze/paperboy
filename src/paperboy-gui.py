@@ -8,6 +8,7 @@ import paperboy as pb
 import logging
 import time
 import os
+import threading
 
 
 MENU_SHOW_TEXT_NONE = "No new articles"
@@ -60,6 +61,8 @@ class App:
         self.timer = QTimer()
         self.timer.timeout.connect(self.f_update_articles)
         self.timer.start(1000)
+
+        self.mutex = threading.Lock() # to prevent multiple article updates at the same time, i.e. called by user and by timer
 
     def init_logging(self):
         # set up logging
@@ -125,7 +128,11 @@ class App:
             self.m_update_articles.setEnabled(True)
 
     def f_update_articles(self):
-        self.f_update_running(True)
+        with self.mutex:
+            if self.timer.isActive():
+                self.f_update_running(True)
+            else:
+                return # skip, do not run two updates, not even one after the other
 
         self.w = UpdateWorker()
         self.w.finished.connect(lambda: self.f_update_running(False))

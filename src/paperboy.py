@@ -417,14 +417,13 @@ class Paperboy:
 
     # load article IDs for all journals
     def update_article_ids(self):
-        logging.info('Loading new articles since {}.'.format(
-            self.cfg.last_check_date.strftime(DATEFORMAT_USER)))
-
         active_journals = []
         for pubmed_j in self.cfg.pubmed_journals:
             for active_j in self.cfg.journals:
                 if active_j == pubmed_j.journal_data_dict[Journal.j_nlmid_key]:
                     active_journals.append(pubmed_j)
+        logging.debug('Paperboy.update_article_ids: updating article ids for {} journals'.format(
+            len(active_journals)))
 
         for j in active_journals:
             j_nlmid = j.journal_data_dict[Journal.j_nlmid_key]

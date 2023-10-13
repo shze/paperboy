@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import paperboy as pb
 import sys
@@ -8,11 +8,16 @@ import datetime
 
 
 def func_up(args):
-    pb.Paperboy().update_article_ids()
+    p = pb.Paperboy()
+    logging.info('Loading new articles since {}.'.format(
+        p.cfg.last_check_date.strftime(pb.DATEFORMAT_USER)))
+    p.update_article_ids()
 
 
 def func_up_show(args):
     p = pb.Paperboy()
+    logging.info('Loading new articles since {}.'.format(
+        p.cfg.last_check_date.strftime(pb.DATEFORMAT_USER)))
     p.update_article_ids()
     p.load_all_articles()
     p.show_articles(args.show_all)
